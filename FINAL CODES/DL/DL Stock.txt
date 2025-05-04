@@ -1,0 +1,147 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dropout
+
+#load dataset
+dataset_train = pd.read_csv('Google_Stock_Price_Train.csv')
+
+dataset_train.head()
+
+#keras only takes numpy array
+training_set = dataset_train.iloc[:, 1: 2].values
+
+training_set.shape
+
+#feature scaling
+sc = MinMaxScaler(feature_range = (0, 1))
+#fit: get min/max of train data
+training_set_scaled = sc.fit_transform(training_set)
+
+## 60 timesteps and 1 output
+# Data structure creation
+# taking the reference of past 60 days of data to predict the future stock price.
+# It is observed that taking 60 days of past data gives us best results.
+# In this data set 60 days of data means 3 months of data.
+# Every month as 20 days of Stock price.
+# X train will have data of 60 days prior to our date and y train will have data of one day after our date
+
+X_train = []
+y_train = []
+for i in range(60, len(training_set_scaled)):
+    X_train.append(training_set_scaled[i-60: i, 0])
+    y_train.append(training_set_scaled[i, 0])
+
+X_train, y_train = np.array(X_train), np.array(y_train)
+
+X_train.shape
+
+y_train.shape
+
+#Data reshaping
+X_train = np.reshape(X_train, newshape = 
+                     (X_train.shape[0], X_train.shape[1], 1))
+
+X_train.shape
+
+#EDA
+plt.figure(figsize=(18, 8))
+plt.plot(dataset_train['Open'])
+plt.title("Google Stock Open Prices")
+plt.xlabel("Time (oldest -> latest)")
+plt.ylabel("Stock Open Price")
+plt.show()
+
+
+
+plt.figure(figsize=(18, 8))
+plt.plot(dataset_train['Low'])
+plt.title("Google Stock Low Prices")
+plt.xlabel("Time (oldest -> latest)")
+plt.ylabel("Stock Lowest Price")
+plt.show()
+
+#Create and fit model
+regressor = Sequential()
+#add 1st lstm layer
+regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (X_train.shape[1], 1)))
+regressor.add(Dropout(rate = 0.2))
+
+##add 2nd lstm layer: 50 neurons
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(rate = 0.2))
+
+##add 3rd lstm layer
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(rate = 0.2))
+
+##add 4th lstm layer
+regressor.add(LSTM(units = 50, return_sequences = False))
+regressor.add(Dropout(rate = 0.2))
+
+##add output layer
+regressor.add(Dense(units = 1))
+
+regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
+
+regressor.fit(x = X_train, y = y_train, batch_size = 32, epochs = 10)
+
+#Model evaluation
+dataset_test = pd.read_csv('Google_Stock_Price_Test.csv')
+
+dataset_test.head()
+#keras only takes numpy array
+real_stock_price = dataset_test.iloc[:, 1: 2].values
+real_stock_price.shape
+
+#Concat and convert
+
+#vertical concat use 0, horizontal uses 1
+dataset_total = pd.concat((dataset_train['Open'], dataset_test['Open']), 
+                          axis = 0)
+##use .values to make numpy array
+inputs = dataset_total[len(dataset_total) - len(dataset_test) - 60:].values
+
+#Reshaprea and scale
+#reshape data to only have 1 col
+inputs = inputs.reshape(-1, 1)
+
+#scale input
+inputs = sc.transform(inputs)
+
+
+
+len(inputs)
+
+#Create test data structure
+X_test = []
+for i in range(60, len(inputs)):
+    X_test.append(inputs[i-60:i, 0])
+X_test = np.array(X_test)
+#add dimension of indicator
+X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+
+X_test.shape
+
+#Model repdiction
+predicted_stock_price = regressor.predict(X_test)
+
+#inverse the scaled value
+predicted_stock_price = sc.inverse_transform(predicted_stock_price)
+
+#Result visualization
+
+##visualize the prediction and real price
+plt.plot(real_stock_price, color = 'red', label = 'Real price')
+plt.plot(predicted_stock_price, color = 'blue', label = 'Predicted price')
+
+plt.title('Google price prediction')
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.legend()
+plt.show()
+
